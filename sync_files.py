@@ -146,7 +146,7 @@ if __name__ == "__main__":
     parser.add_argument("source_directory", help="The source directory to synchronize from.")
     parser.add_argument("destination_directory", help="The destination directory to synchronize to.")
     parser.add_argument("-d", "--delete", action="store_true",
-                        help="Delete files and folderd in destination that are not in source.")
+                        help="Delete files and folders in destination that are not in source.")
     parser.add_argument("-l", "--log",  action="store_true",
                         help="Log results in the destination folder.")
     args = parser.parse_args()
