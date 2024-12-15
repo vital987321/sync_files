@@ -3,6 +3,7 @@ import shutil
 import filecmp
 import argparse
 from tqdm import tqdm
+from time import gmtime, strftime
 
 
 def check_directories(src_dir:str, dst_dir:str) -> bool:
@@ -31,8 +32,10 @@ def sync_directories(src_dir:str, dst_dir:str, delete:bool=False) -> dict:
     """
     # Store names of all files and directories from the source directory
     files_to_sync:list = []
-    files_added:int=0
-    folders_added:int=0
+    added_files:list=[]
+    added_folders:list=[]
+    deleted_files:list=[]
+    deleted_folders:list=[]
     for root, dirs, files in os.walk(src_dir):
         for directory in dirs:
             files_to_sync.append(os.path.join(root, directory))
@@ -44,12 +47,13 @@ def sync_directories(src_dir:str, dst_dir:str, delete:bool=False) -> dict:
         for source_path in files_to_sync:
             replica_path = os.path.join(dst_dir, os.path.relpath(source_path, src_dir))
 
-            # Check if path is a directory and create it in the replica directory if it does not exist
+            # Path is a directory and it does not exist in the destination
             if os.path.isdir(source_path):
                 if not os.path.exists(replica_path):
                     os.makedirs(replica_path)
-                    folders_added+=1
-            # Copy all files from the source directory to the replica directory
+                    added_folders.append(replica_path)
+                    
+            # Copy files from the source directory to the replica directory
             else:
                 # Check if the file exists in the replica directory and if it is different from the source file
                 if not os.path.exists(replica_path) or not filecmp.cmp(source_path, replica_path, shallow=True):
@@ -59,7 +63,8 @@ def sync_directories(src_dir:str, dst_dir:str, delete:bool=False) -> dict:
 
                     # Copy the file from the source directory to the replica directory
                     shutil.copy2(source_path, replica_path)
-                    files_added+=1
+                    added_files.append(replica_path)
+                    
 
             pbar.update(1)
     
@@ -87,13 +92,48 @@ def sync_directories(src_dir:str, dst_dir:str, delete:bool=False) -> dict:
                     # Check if the path is a directory and remove it
                     if os.path.isdir(replica_path):
                         shutil.rmtree(replica_path)
+                        deleted_folders.append(replica_path)
                     else:
                         # Remove the file from the destination directory
                         os.remove(replica_path)
+                        deleted_files.append(replica_path)
 
                 # Update the progress bar
                 pbar.update(1)
-    return {'files_added':files_added, 'folders_added':folders_added}
+    return {'added_files':added_files,
+            'added_folders':added_folders,
+            'deleted_files':deleted_files,
+            'deleted_folders':deleted_folders,
+            }
+
+
+def log_sync(dst_dir:str, sync_dict:dict)->None:
+    """
+        Creates Log file in the destination directory
+    """
+    with open(os.path.join(dst_dir, 'log.txt'), "w") as logfile:
+        current_time=strftime("%Y-%m-%d %H:%M:%S", gmtime())
+        logfile.write(f'Syncronization log  {current_time} \n')
+        logfile.write(f"Added Folders: {len(sync_dict['added_folders'])},  Files: {len(sync_dict['added_files'])}\n")
+        if(len(sync_dict['deleted_folders'])>0 or len(sync_dict['deleted_files'])>0):
+            logfile.write(f"Deleted Folders: {len(sync_dict['deleted_folders'])},  Files: {len(sync_dict['deleted_files'])}\n")
+        if len(sync_dict['added_folders'])>0:
+            logfile.write('\n    ------Added Folders------    \n')
+            for folder in sync_dict['added_folders']:
+                logfile.write(f'{folder}\n')
+        if len(sync_dict['added_files'])>0:
+            logfile.write('\n    ------Added Files------    \n')    
+            for file in sync_dict['added_files']:
+                logfile.write(f'{file}\n')
+        if len(sync_dict['deleted_folders'])>0:
+            logfile.write('\n    ------Deleted Folders------    \n')
+            for folder in sync_dict['deleted_folders']:
+                logfile.write(f'{folder}\n')
+        if len(sync_dict['deleted_files'])>0:
+            logfile.write('\n    ------Deleted Files------    \n')
+            for folder in sync_dict['deleted_files']:
+                logfile.write(f'{folder}\n')
+
 
 
 if __name__ == "__main__":
@@ -106,7 +146,9 @@ if __name__ == "__main__":
     parser.add_argument("source_directory", help="The source directory to synchronize from.")
     parser.add_argument("destination_directory", help="The destination directory to synchronize to.")
     parser.add_argument("-d", "--delete", action="store_true",
-                        help="Delete files in destination that are not in source.")
+                        help="Delete files and folderd in destination that are not in source.")
+    parser.add_argument("-l", "--log",  action="store_true",
+                        help="Log results in the destination folder.")
     args = parser.parse_args()
 
     # If the delete flag is set, print a warning message
@@ -118,6 +160,11 @@ if __name__ == "__main__":
         exit(1)
 
     # Synchronize the directories
-    sync=sync_directories(args.source_directory, args.destination_directory, args.delete)
-    print(f"\nSynchronization complete. Added Folders: {sync['folders_added']},  Files: {sync['files_added']}")
+    sync_dict=sync_directories(args.source_directory, args.destination_directory, args.delete)
+    if args.log:
+        log_sync(args.destination_directory, sync_dict)
+    print(f"\nSynchronization complete")
+    print(f"\tAdded Folders: {len(sync_dict['added_folders'])},\tFiles: {len(sync_dict['added_files'])}")
+    if args.delete:
+        print(f"\tDeleted Folders: {len(sync_dict['deleted_folders'])},\tFiles: {len(sync_dict['deleted_files'])}")
 

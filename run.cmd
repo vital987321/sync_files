@@ -1,2 +1,2 @@
-python sync_files.py D:\Temp\sync_test\s D:\Temp\sync_test\d
+python sync_files.py D:\Temp\sync_test\s D:\Temp\sync_test\d -d -l
 Pause;
