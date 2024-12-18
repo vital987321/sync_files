@@ -3,6 +3,7 @@ import argparse
 from tqdm import tqdm
 import filecmp
 import shutil
+from time import gmtime, strftime
 
 class Synchronizer:
     def __init__(self,
@@ -11,7 +12,8 @@ class Synchronizer:
                  ):
         self.source_dir=source_dir
         self.destination_dir=destination_dir
-        self.pathes_to_sync=[]
+        self.sync_pathes=[]
+        self.destination_pathes=[]
         self.added_files=[]
         self.added_folders=[]
         self.deleted_files=[]
@@ -34,23 +36,31 @@ class Synchronizer:
             return False
         return True
 
-    def get_pathes_to_sync(self):
+    def get_sync_pathes(self):
         # Store names of all files and directories from the source directory
         for root, dirs, files in os.walk(self.source_dir):
             for directory in dirs:
-                self.pathes_to_sync.append(os.path.join(root, directory))
+                self.pathes_to_delete.append(os.path.join(root, directory))
             for file in files:
-                self.pathes_to_sync.append(os.path.join(root, file))
+                self.pathes_to_delete.append(os.path.join(root, file))
+    
+    def get_destination_pathes(self):
+        # Get a list of all files and folders in the destination directory
+        for root, dirs, files in os.walk(self.destination_dir):
+            for directory in dirs:
+                self.destination_pathes.append(os.path.join(root, directory))
+            for file in files:
+                self.destination_pathes.append(os.path.join(root, file))
 
     def sync_directories(self, delete:bool=False) -> dict:
         """
             Synchronize files between two directories.
             Returns dictionary with amout of copied folders and files
         """
-        self.get_pathes_to_sync()
+        self.get_sync_pathes(self)
         # Iterating through files in the source directory (with progress bar)
-        with tqdm(total=len(self.pathes_to_sync), desc="Syncing files", unit="file") as pbar:
-            for source_path in self.pathes_to_sync:
+        with tqdm(total=len(self.sync_pathes), desc="Syncing files", unit="file") as pbar:
+            for source_path in self.sync_pathes:
                 replica_path = os.path.join(self.destination_dir, os.path.relpath(source_path, self.destination_dir))
 
                 # Path is a directory and it does not exist in the destination
@@ -71,6 +81,58 @@ class Synchronizer:
                         shutil.copy2(source_path, replica_path)
                         self.added_files.append(replica_path)
                 pbar.update(1)
+
+    def delete_missing_files(self):
+        self.get_destination_pathes()
+        # Iterate over each file in the destination directory with a progress bar
+        with tqdm(total=len(self.destination_pathes), desc="Deleting files", unit="file") as pbar:
+            # Iterate over each file in the destination directory
+            for replica_path in self.destination_pathes:
+                # Check if the file exists in the source directory
+                source_path = os.path.join(self.source_dir, os.path.relpath(replica_path, self.destination_dir))
+                if not os.path.exists(source_path):
+                    # Set the description of the progress bar
+                    pbar.set_description(f"Processing '{replica_path}'")
+                    print(f"\nDeleting {replica_path}")
+
+                    # Check if the path is a directory and remove it
+                    if os.path.isdir(replica_path):
+                        shutil.rmtree(replica_path)
+                        self.deleted_folders.append(replica_path)
+                    else:
+                        # Remove the file from the destination directory
+                        os.remove(replica_path)
+                        self.deleted_files.append(replica_path)
+
+                # Update the progress bar
+                pbar.update(1)
+
+    def log_results(self):
+        """
+        Creates Log file in the destination directory
+        """
+        with open(os.path.join(self.destination_dir, 'log.txt'), "w") as logfile:
+            log_time=strftime("%Y-%m-%d %H:%M:%S", gmtime())
+            logfile.write(f'Syncronization log  {log_time} \n')
+            logfile.write(f"Added Folders: {len(self.added_folders)},  Files: {len(self.added_files)}\n")
+            if(len(self.deleted_folders)>0 or len(self.deleted_files)>0):
+                logfile.write(f"Deleted Folders: {len(self.deleted_folders)},  Files: {len(self.deleted_files)}\n")
+            if len(self.added_folders)>0:
+                logfile.write('\n    ------Added Folders------    \n')
+                for folder in self.added_folders:
+                    logfile.write(f'{folder}\n')
+            if len(self.added_files)>0:
+                logfile.write('\n    ------Added Files------    \n')    
+                for file in self.added_files:
+                    logfile.write(f'{file}\n')
+            if len(self.deleted_folders)>0:
+                logfile.write('\n    ------Deleted Folders------    \n')
+                for folder in self.deleted_folders:
+                    logfile.write(f'{folder}\n')
+            if len(self.deleted_files)>0:
+                logfile.write('\n    ------Deleted Files------    \n')
+                for folder in self.deleted_files:
+                    logfile.write(f'{folder}\n')
 
 
 
@@ -96,9 +158,10 @@ if __name__ == "__main__":
         print("\nExtraneous files in the destination will be deleted.")
 
     sync=Synchronizer(source_dir=args.source_directory, destination_dir=args.destination_directory)
-    if not sync.validate_dirs():
-        exit(1)
-    
+    # if not sync.validate_dirs():
+    #     exit(1)
+    if sync.validate_dirs():
+        sync.sync_directories()
 
         
 
