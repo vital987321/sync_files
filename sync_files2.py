@@ -8,7 +8,7 @@ from time import gmtime, strftime
 class Synchronizer:
     def __init__(self,
                  source_dir:str,
-                 destination_dir:str
+                 destination_dir:str,
                  ):
         self.source_dir=source_dir
         self.destination_dir=destination_dir
@@ -19,6 +19,7 @@ class Synchronizer:
         self.deleted_files=[]
         self.deleted_folders=[]
         self.shallow=True
+        self.deletion=False
     
     def validate_dirs(self) -> bool:
         """
@@ -82,7 +83,12 @@ class Synchronizer:
                         self.added_files.append(replica_path)
                 pbar.update(1)
 
+        self.delete_missing_files()
+
     def delete_missing_files(self):
+        if not self.deletion:
+            return None
+        
         self.get_destination_pathes()
         # Iterate over each file in the destination directory with a progress bar
         with tqdm(total=len(self.destination_pathes), desc="Deleting files", unit="file") as pbar:
@@ -153,11 +159,14 @@ if __name__ == "__main__":
                         help="Log results in the destination folder.")
     args = parser.parse_args()
 
+    sync=Synchronizer(source_dir=args.source_directory, destination_dir=args.destination_directory)
+
     # If the delete flag is set, print a warning message
     if args.delete:
         print("\nExtraneous files in the destination will be deleted.")
+        sync.deletion=True
 
-    sync=Synchronizer(source_dir=args.source_directory, destination_dir=args.destination_directory)
+    
     # if not sync.validate_dirs():
     #     exit(1)
     if sync.validate_dirs():
